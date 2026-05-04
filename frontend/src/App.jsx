@@ -816,16 +816,26 @@ const DEFAULT_CONFIG = {
 
 const REFRESH_INTERVAL = 10 * 60 * 1000
 
+const PW_HASH = '1ef65850246c85dc7ffa2f9fe8a065fce5d3069fb79fcddb3e90df1a2c6b98b7'
+
+async function sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str))
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
 function PasswordGate({ children }) {
-  const [unlocked, setUnlocked] = useLocalStorage('pw-unlocked', false)
+  const [storedHash, setStoredHash] = useLocalStorage('pw-token', null)
+  const [unlocked, setUnlocked] = useState(() => storedHash === PW_HASH)
   const [input, setInput] = useState('')
   const [error, setError] = useState(false)
 
   if (unlocked) return children
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    if (input === 'fiona') {
+    const hash = await sha256(input)
+    if (hash === PW_HASH) {
+      setStoredHash(hash)
       setUnlocked(true)
       setError(false)
     } else {

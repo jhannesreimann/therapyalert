@@ -816,7 +816,7 @@ const DEFAULT_CONFIG = {
 
 const REFRESH_INTERVAL = 10 * 60 * 1000
 
-const PW_HASH = '1ef65850246c85dc7ffa2f9fe8a065fce5d3069fb79fcddb3e90df1a2c6b98b7'
+const PW_HASH = '4c0db82499ca9a6d65c396d1fbb8e77078e315bd8db0e9476a88cd244aa76ca6'
 
 async function sha256(str) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str))

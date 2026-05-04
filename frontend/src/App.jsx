@@ -809,7 +809,7 @@ const DEFAULT_CONFIG = {
   range: 20,
   lat: 52.4009309,
   lng: 13.0591397,
-  blacklist: '',
+  blacklist: 'Demmrich,Speyer-Danes',
   eterminCode: '',
   eterminPLZ: '14471',
 }
@@ -850,6 +850,8 @@ export default function App() {
   const fetchKvbb = useCallback(async (cfg = config) => {
     setLoading(true)
     setError(null)
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 90000)
     try {
       const params = new URLSearchParams({
         location: cfg.location,
@@ -858,7 +860,7 @@ export default function App() {
         lng: cfg.lng,
         ...(cfg.blacklist ? { blacklist: cfg.blacklist } : {}),
       })
-      const resp = await fetch(`${API_BASE}/api/kvbb?${params}`)
+      const resp = await fetch(`${API_BASE}/api/kvbb?${params}`, { signal: controller.signal })
       const data = await resp.json()
       if (data.success) {
         setKvbbAlerts(data.alerts)
@@ -869,8 +871,13 @@ export default function App() {
       }
       setLastFetch(new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }))
     } catch (e) {
-      setError(`Verbindungsfehler: ${e.message}. Läuft das Backend auf Port 5050?`)
+      if (e.name === 'AbortError') {
+        setError('Zeitüberschreitung: Backend antwortet nicht. Bitte erneut versuchen.')
+      } else {
+        setError(`Verbindungsfehler: ${e.message}`)
+      }
     } finally {
+      clearTimeout(timeout)
       setLoading(false)
     }
   }, [config, setSeenIds])

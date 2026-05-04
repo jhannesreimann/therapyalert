@@ -31,8 +31,8 @@ Thumbs.db
 .idea/
 
 # Scraped HTML files (local dev only)
-*.html
-*_files/
+backend/*.html
+backend/*_files/
 
 # Windsurf deployment config (optional, remove if you want to track it)
 windsurf_deployment.yaml

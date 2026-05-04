@@ -914,6 +914,7 @@ export default function App() {
   const [error, setError] = useState(null)
   const [autoRefresh, setAutoRefresh] = useLocalStorage('auto-refresh', false)
   const [seenIds, setSeenIds] = useLocalStorage('seen-ids', [])
+  const [hasSearched, setHasSearched] = useState(false)
   const intervalRef = useRef(null)
 
   useEffect(() => {
@@ -987,22 +988,19 @@ export default function App() {
   }, [config])
 
   const runSearch = useCallback((cfg = config) => {
+    setHasSearched(true)
     fetchKvbb(cfg)
     fetchEtermin(cfg)
   }, [fetchKvbb, fetchEtermin, config])
 
   useEffect(() => {
-    runSearch()
-  }, [])
-
-  useEffect(() => {
-    if (autoRefresh) {
+    if (autoRefresh && hasSearched) {
       intervalRef.current = setInterval(() => runSearch(), REFRESH_INTERVAL)
     } else {
       clearInterval(intervalRef.current)
     }
     return () => clearInterval(intervalRef.current)
-  }, [autoRefresh, runSearch])
+  }, [autoRefresh, hasSearched, runSearch])
 
   const isNew = (alert) => !seenIds.includes(`${alert.name}::${alert.address}`)
   const newAlerts = kvbbAlerts.filter(isNew)
@@ -1026,15 +1024,27 @@ export default function App() {
           </div>
 
           <div className="ml-auto flex items-center gap-2">
-            <button
-              onClick={() => runSearch()}
-              disabled={loading}
-              className="p-2 rounded-xl transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
-              style={{ background: 'var(--surface2)', color: 'var(--text-muted)' }}
-              title="Jetzt aktualisieren"
-            >
-              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-            </button>
+            {!hasSearched ? (
+              <button
+                onClick={() => runSearch()}
+                disabled={loading}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all hover:opacity-90 active:scale-95 disabled:opacity-50"
+                style={{ background: 'var(--accent)', color: '#fff' }}
+              >
+                <Search size={15} />
+                Suche starten
+              </button>
+            ) : (
+              <button
+                onClick={() => runSearch()}
+                disabled={loading}
+                className="p-2 rounded-xl transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                style={{ background: 'var(--surface2)', color: 'var(--text-muted)' }}
+                title="Jetzt aktualisieren"
+              >
+                <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+              </button>
+            )}
             <ThemeToggle dark={dark} toggle={() => setDark(!dark)} />
           </div>
         </div>
@@ -1105,6 +1115,19 @@ export default function App() {
                   style={{ background: 'var(--surface)' }}
                 />
               ))}
+            </div>
+          ) : !hasSearched ? (
+            <div
+              className="rounded-2xl border p-8 text-center"
+              style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+            >
+              <div className="w-12 h-12 rounded-2xl mx-auto mb-3 flex items-center justify-center" style={{ background: 'var(--accent-light)' }}>
+                <Search size={22} style={{ color: 'var(--accent)' }} />
+              </div>
+              <p className="font-medium" style={{ color: 'var(--text)' }}>Bereit zur Suche</p>
+              <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+                Klicke auf „Suche starten", um Praxen in {config.location} im Umkreis von {config.range} km zu scannen.
+              </p>
             </div>
           ) : kvbbAlerts.length === 0 ? (
             <div

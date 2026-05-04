@@ -47,7 +47,7 @@ AJAX_HEADERS = {
 }
 
 EXPAND_COMPONENT = "j_idt582"
-MAX_WORKERS = 10
+MAX_WORKERS = 3
 
 
 def parse_int(text: str) -> Optional[int]:

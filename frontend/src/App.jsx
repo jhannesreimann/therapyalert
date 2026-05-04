@@ -820,13 +820,13 @@ export default function App() {
   const [dark, setDark] = useLocalStorage('theme-dark', true)
   const [config, setConfig] = useLocalStorage('search-config', DEFAULT_CONFIG)
   useEffect(() => {
-    if (config.eterminUrl && !config.eterminCode) {
-      const parts = config.eterminUrl.split('/terminservice/suche/')
-      if (parts[1]) {
-        const code = parts[1].split('/')[0]
-        if (code) setConfig(c => ({ ...c, eterminCode: code, eterminUrl: undefined }))
-      }
-    }
+    setConfig(c => ({ ...DEFAULT_CONFIG, ...c,
+      ...(c.eterminUrl && !c.eterminCode ? (() => {
+        const parts = c.eterminUrl.split('/terminservice/suche/')
+        const code = parts[1]?.split('/')[0]
+        return code ? { eterminCode: code, eterminUrl: undefined } : {}
+      })() : {})
+    }))
   }, [])
   const [kvbbAlerts, setKvbbAlerts] = useState([])
   const [eterminResult, setEterminResult] = useState(null)

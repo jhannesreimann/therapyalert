@@ -816,6 +816,73 @@ const DEFAULT_CONFIG = {
 
 const REFRESH_INTERVAL = 10 * 60 * 1000
 
+function PasswordGate({ children }) {
+  const [unlocked, setUnlocked] = useLocalStorage('pw-unlocked', false)
+  const [input, setInput] = useState('')
+  const [error, setError] = useState(false)
+
+  if (unlocked) return children
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    if (input === 'fiona') {
+      setUnlocked(true)
+      setError(false)
+    } else {
+      setError(true)
+      setInput('')
+    }
+  }
+
+  return (
+    <div
+      className="min-h-screen flex items-center justify-center p-4"
+      style={{ background: 'var(--bg)' }}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl border p-8 shadow-lg"
+        style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+      >
+        <div className="flex flex-col items-center gap-2 mb-6">
+          <Heart size={32} style={{ color: 'var(--accent)' }} />
+          <h1 className="text-xl font-bold" style={{ color: 'var(--text)' }}>TherapyAlert</h1>
+          <p className="text-sm text-center" style={{ color: 'var(--text-muted)' }}>
+            Bitte gib das Passwort ein, um fortzufahren.
+          </p>
+        </div>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <input
+            autoFocus
+            type="password"
+            value={input}
+            onChange={(e) => { setInput(e.target.value); setError(false) }}
+            placeholder="Passwort"
+            className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2"
+            style={{
+              background: 'var(--surface2)',
+              borderColor: error ? 'var(--danger)' : 'var(--border)',
+              color: 'var(--text)',
+              ringColor: 'var(--accent)',
+            }}
+          />
+          {error && (
+            <p className="text-xs flex items-center gap-1" style={{ color: 'var(--danger)' }}>
+              <AlertCircle size={12} /> Falsches Passwort
+            </p>
+          )}
+          <button
+            type="submit"
+            className="w-full rounded-xl py-2.5 text-sm font-semibold transition-all hover:opacity-90 active:scale-95"
+            style={{ background: 'var(--accent)', color: '#fff' }}
+          >
+            Weiter
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const [dark, setDark] = useLocalStorage('theme-dark', true)
   const [config, setConfig] = useLocalStorage('search-config', DEFAULT_CONFIG)
@@ -931,6 +998,7 @@ export default function App() {
   const newAlerts = kvbbAlerts.filter(isNew)
 
   return (
+    <PasswordGate>
     <div className="min-h-screen" style={{ background: 'var(--bg)' }}>
       <header
         className="sticky top-0 z-50 backdrop-blur-sm border-b"
@@ -1121,5 +1189,6 @@ export default function App() {
         </footer>
       </main>
     </div>
+    </PasswordGate>
   )
 }

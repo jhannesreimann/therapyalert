@@ -47,7 +47,7 @@ AJAX_HEADERS = {
 }
 
 EXPAND_COMPONENT = "j_idt582"
-MAX_WORKERS = 3
+MAX_WORKERS = 10
 
 
 def parse_int(text: str) -> Optional[int]:
@@ -206,7 +206,7 @@ def fetch_entry_details(session, view_state, entry_index, referer_url) -> Option
     }
     headers = {**AJAX_HEADERS, "Referer": referer_url}
     try:
-        resp = session.post(KVBB_BASE, data=data, headers=headers, timeout=20)
+        resp = session.post(KVBB_BASE, data=data, headers=headers, timeout=10)
         resp.raise_for_status()
         return BeautifulSoup(resp.text, "lxml")
     except Exception as e:
@@ -473,26 +473,26 @@ def scrape_etermin_stream(code: str, plz: str, distance_km: int = 20) -> Generat
                 "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
             )
 
-            yield _evt("navigate", 15, "Startseite wird geladen…")
-            page.goto(ETERMIN_HOME, timeout=30000)
-            page.wait_for_timeout(4000)
+            yield _evt('navigate', 15, 'Startseite wird geladen…')
+            page.goto(ETERMIN_HOME, timeout=60000)
+            page.wait_for_timeout(1500)
 
             yield _evt("enter_code", 30, "Vermittlungscode wird eingegeben…")
             page.locator(".ets-radio-control").filter(has_text="Ja").click()
-            page.wait_for_timeout(800)
+            page.wait_for_timeout(400)
 
             parts = code.strip().upper().split("-")
             for i, part in enumerate(parts[:3]):
                 inp = page.locator(f"input[data-index='{i}']")
                 inp.wait_for(state="visible", timeout=5000)
                 inp.fill(part)
-                page.wait_for_timeout(300)
+                page.wait_for_timeout(100)
 
             yield _evt("enter_plz", 42, "PLZ wird eingegeben…")
             plz_inp = page.locator("input[formcontrolname='zip']").first
             plz_inp.wait_for(state="visible", timeout=5000)
-            plz_inp.fill((plz or "14471").strip())
-            page.wait_for_timeout(300)
+            plz_inp.fill((plz or '14471').strip())
+            page.wait_for_timeout(100)
 
             yield _evt("submit", 55, "Suche wird gestartet…")
             submit = page.locator("button[type='submit']").first
@@ -500,9 +500,13 @@ def scrape_etermin_stream(code: str, plz: str, distance_km: int = 20) -> Generat
             page.evaluate("document.querySelector('button[type=submit]').removeAttribute('disabled')")
             submit.click()
 
-            yield _evt("wait", 68, "Warte auf Suchergebnisse…")
-            page.wait_for_load_state("networkidle", timeout=30000)
-            page.wait_for_timeout(2000)
+            yield _evt('wait', 68, 'Warte auf Suchergebnisse…')
+            page.wait_for_load_state('domcontentloaded', timeout=60000)
+            try:
+                page.wait_for_selector('ets-search-results, .ets-search-results-item, .ets-no-results', timeout=20000)
+            except Exception:
+                pass
+            page.wait_for_timeout(800)
             result_url = page.url
             logger.info(f"eTerminservice navigated to: {result_url}")
 
@@ -512,12 +516,12 @@ def scrape_etermin_stream(code: str, plz: str, distance_km: int = 20) -> Generat
                     filter_btn = page.locator(".ets-search-filter-distance").first
                     filter_btn.wait_for(state="visible", timeout=8000)
                     filter_btn.click()
-                    page.wait_for_timeout(800)
-                    label = page.locator("label").filter(has_text=str(distance_km)).first
-                    label.wait_for(state="visible", timeout=5000)
+                    page.wait_for_timeout(400)
+                    label = page.locator('label').filter(has_text=str(distance_km)).first
+                    label.wait_for(state='visible', timeout=5000)
                     label.click()
-                    page.wait_for_load_state("networkidle", timeout=15000)
-                    page.wait_for_timeout(1500)
+                    page.wait_for_load_state('domcontentloaded', timeout=15000)
+                    page.wait_for_timeout(800)
                     logger.info(f"Distance filter set to {distance_km} km")
                 except Exception as dist_err:
                     logger.warning(f"Distance selection failed (using site default): {dist_err}")

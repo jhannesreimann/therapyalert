@@ -12,4 +12,4 @@ COPY . .
 
 EXPOSE 10000
 
-CMD ["sh", "-c", "python3 -m gunicorn --bind 0.0.0.0:${PORT:-10000} --timeout 180 --workers 3 app:app"]
+CMD ["sh", "-c", "python3 -m gunicorn --bind 0.0.0.0:${PORT:-10000} --timeout 300 --workers 1 --worker-class gthread --threads 4 app:app"]

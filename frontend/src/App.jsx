@@ -929,7 +929,7 @@ export default function App() {
     setLoading(true)
     setError(null)
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 90000)
+    const timeout = setTimeout(() => controller.abort(), 300000)
     try {
       const params = new URLSearchParams({
         location: cfg.location,
@@ -950,7 +950,7 @@ export default function App() {
       setLastFetch(new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }))
     } catch (e) {
       if (e.name === 'AbortError') {
-        setError('Zeitüberschreitung: Backend antwortet nicht. Bitte erneut versuchen.')
+        setError('Zeitüberschreitung nach 5 Minuten. Bitte erneut versuchen.')
       } else {
         setError(`Verbindungsfehler: ${e.message}`)
       }

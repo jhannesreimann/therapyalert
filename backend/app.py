@@ -474,8 +474,8 @@ def scrape_etermin_stream(code: str, plz: str, distance_km: int = 20) -> Generat
             )
 
             yield _evt('navigate', 15, 'Startseite wird geladen…')
-            page.goto(ETERMIN_HOME, timeout=60000)
-            page.wait_for_timeout(1500)
+            page.goto(ETERMIN_HOME, timeout=120000, wait_until='domcontentloaded')
+            page.wait_for_timeout(3000)
 
             yield _evt("enter_code", 30, "Vermittlungscode wird eingegeben…")
             page.locator(".ets-radio-control").filter(has_text="Ja").click()

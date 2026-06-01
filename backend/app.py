@@ -89,10 +89,13 @@ def extract_entry_meta(entry) -> dict:
 
     expand_link = entry.select_one(f"[id*=detailsExpandEintrag] a[id]")
     entry_index = None
+    expand_component = "j_idt582"
     if expand_link:
-        m = re.search(r"arztlisteDataList:(\d+):", expand_link.get("id", ""))
+        expand_id = expand_link.get("id", "")
+        m = re.search(r"arztlisteDataList:(\d+):(.*)", expand_id)
         if m:
             entry_index = int(m.group(1))
+            expand_component = m.group(2)
 
     return {
         "name": name,
@@ -100,6 +103,7 @@ def extract_entry_meta(entry) -> dict:
         "distance": distance,
         "phone": phone,
         "entry_index": entry_index,
+        "expand_component": expand_component,
     }
 
 
@@ -180,16 +184,16 @@ def _make_session_with_viewstate(params: dict) -> tuple:
     session = requests.Session()
     resp = session.get(KVBB_BASE, params=params, headers=HEADERS, timeout=30)
     resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "lxml")
+    soup = BeautifulSoup(resp.text, "html.parser")
     vs_el = soup.select_one("[name='javax.faces.ViewState']")
     view_state = vs_el.get("value", "") if vs_el else ""
-    return session, view_state, resp.url
+    return session, view_state, resp.url, soup
 
 
-def fetch_entry_details(session, view_state, entry_index, referer_url) -> Optional[BeautifulSoup]:
+def fetch_entry_details(session, view_state, entry_index, referer_url, expand_component="j_idt582") -> Optional[BeautifulSoup]:
     """Fire the JSF AJAX expand call for a single entry. Returns parsed soup or None."""
     prefix = f"arztlisteDataList:{entry_index}"
-    source = f"{prefix}:{EXPAND_COMPONENT}"
+    source = f"{prefix}:{expand_component}"
     render_targets = (
         f"{prefix}:detailsPanel "
         f"{prefix}:detailsTabView "
@@ -208,7 +212,14 @@ def fetch_entry_details(session, view_state, entry_index, referer_url) -> Option
     try:
         resp = session.post(KVBB_BASE, data=data, headers=headers, timeout=10)
         resp.raise_for_status()
-        return BeautifulSoup(resp.text, "lxml")
+        
+        # Extract all CDATA contents and combine them
+        cdata_blocks = re.findall(r'<!\[CDATA\[(.*?)(?:\]\]>)', resp.text, re.DOTALL)
+        if cdata_blocks:
+            combined_html = "\n".join(cdata_blocks)
+            return BeautifulSoup(combined_html, "html.parser")
+            
+        return BeautifulSoup(resp.text, "html.parser")
     except Exception as e:
         logger.warning(f"AJAX fetch failed for entry {entry_index}: {e}")
         return None
@@ -223,10 +234,11 @@ def scrape_kvbb(
     blacklist: list[str] | None = None,
 ) -> list[dict]:
     """
-    1. Fetch the KVBB search page once to extract all entry metadata and indices.
-    2. Split entries into N batches, each processed by a worker thread with its own
+    1. Fetch the KVBB search page once to extract total entries count.
+    2. Split entry indices into N batches, each processed by a worker thread with its own
        independent HTTP session (avoids JSF server-side session race conditions).
-    3. Each worker sequentially AJAX-expands its assigned entries.
+    3. Each worker loads its own page, parses its own entries to guarantee no index mismatch,
+       and sequentially AJAX-expands its assigned index range.
     4. Aggregate results: Einzel Erw. slots > 0, excluding blacklisted names.
     """
     if blacklist is None:
@@ -249,36 +261,37 @@ def scrape_kvbb(
     resp = init_session.get(KVBB_BASE, params=params, headers=HEADERS, timeout=30)
     resp.raise_for_status()
     referer_url = resp.url
-    soup = BeautifulSoup(resp.text, "lxml")
+    soup = BeautifulSoup(resp.text, "html.parser")
 
     entries = soup.select(".ases-arzt-eintrag")
-    logger.info(f"Found {len(entries)} therapist entries")
+    total_entries = len(entries)
+    logger.info(f"Found {total_entries} therapist entries")
 
-    entry_metas = []
-    for entry in entries:
-        meta = extract_entry_meta(entry)
-        if meta["entry_index"] is None:
-            continue
-        name_lower = meta["name"].lower()
-        if any(b in name_lower for b in blacklist_lower):
-            logger.info(f"Skipping blacklisted: {meta['name']}")
-            continue
-        entry_metas.append(meta)
+    logger.info(f"Processing {total_entries} entries across {MAX_WORKERS} workers...")
 
-    logger.info(f"Processing {len(entry_metas)} entries across {MAX_WORKERS} workers...")
-
-    def process_batch(batch):
+    def process_batch(start_idx, end_idx):
         """Each worker gets its own fresh session+ViewState and sequentially expands its batch."""
         try:
-            worker_session, view_state, worker_referer = _make_session_with_viewstate(params)
+            worker_session, view_state, worker_referer, worker_soup = _make_session_with_viewstate(params)
         except Exception as e:
             logger.error(f"Worker failed to init session: {e}")
             return []
 
+        worker_entries = worker_soup.select(".ases-arzt-eintrag")
         batch_results = []
-        for meta in batch:
+        for idx in range(start_idx, end_idx):
+            if idx >= len(worker_entries):
+                break
+            meta = extract_entry_meta(worker_entries[idx])
+            if meta["entry_index"] is None:
+                continue
+            name_lower = meta["name"].lower()
+            if any(b in name_lower for b in blacklist_lower):
+                logger.info(f"Skipping blacklisted: {meta['name']}")
+                continue
+
             detail_soup = fetch_entry_details(
-                worker_session, view_state, meta["entry_index"], worker_referer
+                worker_session, view_state, meta["entry_index"], worker_referer, meta["expand_component"]
             )
             if detail_soup is None:
                 continue
@@ -301,12 +314,12 @@ def scrape_kvbb(
             })
         return batch_results
 
-    batch_size = max(1, (len(entry_metas) + MAX_WORKERS - 1) // MAX_WORKERS)
-    batches = [entry_metas[i:i + batch_size] for i in range(0, len(entry_metas), batch_size)]
+    batch_size = max(1, (total_entries + MAX_WORKERS - 1) // MAX_WORKERS)
+    batches = [(i, min(total_entries, i + batch_size)) for i in range(0, total_entries, batch_size)]
 
     results = []
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = [executor.submit(process_batch, batch) for batch in batches]
+        futures = [executor.submit(process_batch, start_idx, end_idx) for start_idx, end_idx in batches]
         for future in as_completed(futures):
             results.extend(future.result())
 
@@ -373,7 +386,7 @@ def _etermin_build_url(code: str, plz: str) -> str:
 
 def parse_etermin_results(html: str) -> list[dict]:
     """Parse the Angular-rendered search results HTML from eterminservice.de."""
-    soup = BeautifulSoup(html, "lxml")
+    soup = BeautifulSoup(html, "html.parser")
     appointments = []
 
     current_date = ""

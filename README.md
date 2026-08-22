@@ -49,6 +49,8 @@ npm run dev
 
 Der Vite-Dev-Server leitet `/api`-Anfragen an `http://localhost:5050` weiter, sodass Backend und Frontend zusammen laufen. Ein Produktionsbuild entsteht mit `npm run build`.
 
+Versionen werden über den Release-Workflow im Actions-Tab erzeugt.
+
 ## API
 
 Alle Endpunkte sind GET-Anfragen am Backend.

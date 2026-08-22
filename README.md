@@ -1,15 +1,32 @@
 # TherapyAlert
 
-Benachrichtigt dich automatisch wenn ein Psychotherapeut freie Einzeltherapieplätze für Erwachsene meldet.
+TherapyAlert sucht nach freien Psychotherapieplätzen für Erwachsene und stellt die Treffer übersichtlich dar. Statt sich täglich durch die Arztsuche zu klicken, genügt ein Suchlauf: Die App fragt die Arztsuche der Kassenärztlichen Vereinigung Berlin-Brandenburg (KVBB) ab und zusätzlich den Terminservice der 116117.
 
-## Quellen
+Live läuft die App hier: [therapyalert.netlify.app](https://therapyalert.netlify.app/)
 
-- **KVBB Arztsuche** – Scraping via JSF-AJAX (funktioniert zuverlässig, ~15-20s pro Scan)
-- **eTerminservice.de (116117)** – Playwright (headless Chromium) umgeht Akamai-Bot-Schutz; zeigt verfügbare PT-Sprechstundentermine mit Zeitslots, SSE-Ladebalken im Frontend
+## Funktionen
 
-## Starten (lokal)
+- **KVBB-Arztsuche:** Findet Praxen im Umkreis mit freien Einzeltherapieplätzen für Erwachsene. Ort oder PLZ eingeben, Umkreis wählen, los. Bekannte Praxen lassen sich per Blacklist ausschließen.
+- **116117 eTerminservice:** Mit einem Vermittlungscode werden PT-Sprechstundentermine gesucht und als Wochenkalender mit buchbaren Zeitslots angezeigt. Der Fortschritt läuft live über Server-Sent Events ins Frontend.
+- **Auto-Refresh:** Optional aktualisiert die App die Ergebnisse alle 10 Minuten von selbst.
+- **Dark Mode** und Einstellungen, die im Browser gespeichert bleiben.
 
-### Backend (Python Flask)
+Der Zugriff ist über einen einfachen Zugangscode geschützt, das Tool ist privat gedacht.
+
+## Technik
+
+| Teil     | Stack                                                            |
+|----------|------------------------------------------------------------------|
+| Frontend | React 19, Vite, Tailwind CSS 4, lucide-react                     |
+| Backend  | Python, Flask, BeautifulSoup/lxml, Playwright (headless Chromium) |
+
+Das Backend kümmert sich um das Scraping, das Frontend ist reine Darstellung. Für die Ortssuche nutzt das Frontend Nominatim (OpenStreetMap).
+
+Deployed ist das Frontend bei Netlify, die nötige Konfiguration liegt in `netlify.toml` im Repo.
+
+## Lokale Entwicklung
+
+### Backend
 
 ```bash
 cd backend
@@ -19,7 +36,9 @@ python3 app.py
 # Läuft auf http://localhost:5050
 ```
 
-### Frontend (React + Vite + TailwindCSS)
+Für den eTerminservice-Teil wird Chromium über Playwright benötigt. Der KVBB-Teil funktioniert auch ohne.
+
+### Frontend
 
 ```bash
 cd frontend
@@ -28,56 +47,37 @@ npm run dev
 # Läuft auf http://localhost:3000
 ```
 
-## Deployment
+Der Vite-Dev-Server leitet `/api`-Anfragen an `http://localhost:5050` weiter, sodass Backend und Frontend zusammen laufen. Ein Produktionsbuild entsteht mit `npm run build`.
 
-### Backend → Railway.app
+## API
 
-1. Erstelle einen Account auf [railway.app](https://railway.app) (GitHub-Login)
-2. **New Project → Deploy from GitHub repo** → dieses Repo auswählen
-3. Bei der Service-Konfiguration: **Root Directory** auf `backend` setzen
-4. Railway erkennt das `Dockerfile` automatisch und baut es
-5. Nach dem Deploy: Die generierte URL kopieren (z.B. `https://therapyalert-backend.up.railway.app`)
-
-### Frontend → Netlify
-
-1. Erstelle einen Account auf [netlify.app](https://netlify.com) (GitHub-Login)
-2. **Add new site → Import an existing project → GitHub** → dieses Repo auswählen
-3. Build-Einstellungen werden automatisch aus `netlify.toml` erkannt:
-   - Base directory: `frontend`
-   - Build command: `npm run build`
-   - Publish directory: `frontend/dist`
-4. Unter **Site configuration → Environment variables** hinzufügen:
-   - Key: `VITE_API_BASE`
-   - Value: die Railway-URL von oben (z.B. `https://therapyalert-backend.up.railway.app`)
-5. **Deploy site** klicken — fertig
-
-## API Endpunkte
+Alle Endpunkte sind GET-Anfragen am Backend.
 
 ### `GET /api/kvbb`
-| Parameter  | Default        | Beschreibung                              |
-|------------|----------------|-------------------------------------------|
-| `location` | `Potsdam`      | Ort oder PLZ                              |
-| `range`    | `20.0`         | Umkreis in km                             |
-| `lat`      | `52.4009309`   | Breitengrad                               |
-| `lng`      | `13.0591397`   | Längengrad                                |
-| `size`     | `500`          | Max. Einträge                             |
-| `blacklist`| *(leer)*       | Kommagetrennte Namen zum Ausschließen     |
 
-### `GET /api/etermin`
-| Parameter | Default  | Beschreibung         |
-|-----------|----------|----------------------|
-| `code`    | *(leer)* | Vermittlungscode     |
-| `plz`     | `14471`  | Postleitzahl         |
+| Parameter   | Default      | Beschreibung                          |
+|-------------|--------------|---------------------------------------|
+| `location`  | `Potsdam`    | Ort oder PLZ                          |
+| `range`     | `20.0`       | Umkreis in km                         |
+| `lat`       | `52.4009309` | Breitengrad                           |
+| `lng`       | `13.0591397` | Längengrad                            |
+| `size`      | `500`        | Max. Anzahl Einträge                  |
+| `blacklist` | *(leer)*     | Kommagetrennte Namen zum Ausschließen |
+
+### `GET /api/etermin/stream`
+
+Sucht eTerminservice-Termine und streamt Fortschritt sowie Ergebnis als Server-Sent Events. Parameter: `code` (Vermittlungscode), `plz`, `distance`. Es gibt auch eine einfache Variante ohne Streaming unter `/api/etermin`.
 
 ### `GET /api/health`
-Gibt `{"status": "ok"}` zurück.
 
-## Wie es funktioniert
+Antwortet mit Status und Zeitstempel, eignet sich zum Prüfen ob das Backend lebt.
 
-Die KVBB-Seite verwendet JavaServer Faces (JSF) mit PrimeFaces. Die Listeneinträge der Praxen werden in der initialen HTML-Seite ohne FT-Tabellen (Freie Therapieplätze) geladen – die Daten kommen erst via JSF-AJAX-Request wenn ein Eintrag aufgeklappt wird.
+## Wie das Scraping funktioniert
 
-Das Backend:
-1. Lädt die Suchseite und extrahiert alle Praxisnamen und Entry-Indices
-2. Teilt die Einträge in Batches auf (10 parallele Worker)
-3. Jeder Worker öffnet eine eigene Session und sendet AJAX-Expand-Requests für seinen Batch
-4. Parsed die FT-Tabellen und filtert nach `Einzel Erw.` mit Wert > 0
+Die KVBB-Arztsuche baut auf JavaServer Faces (JSF) mit PrimeFaces. Die Liste der Praxen kommt zwar mit der initialen HTML-Seite, die Tabellen mit den freien Therapieplätzen aber erst per AJAX, wenn man einen Eintrag aufklappt. Das Backend holt die Seite einmal, extrahiert alle Praxisnamen und Entry-Indizes und verschickt dann in Batches à 10 Worker parallele AJAX-Expand-Requests mit eigener Session pro Worker. Aus den Antworten parst es die FT-Tabellen und behält nur Zeilen mit „Einzel Erw." größer 0.
+
+Beim eTerminservice übernimmt Playwright den Teil eines echten Nutzers: Vermittlungscode eingeben, PLZ dazu, abschicken, Umkreis setzen. Danach werden die Suchergebnisse geparst und als Termine mit Zeitslots zurückgegeben.
+
+## Lizenz
+
+[MIT](LICENSE)
